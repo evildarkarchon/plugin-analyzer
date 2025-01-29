@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics.CodeAnalysis;
-using System.Text;
 using CommandLine;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Plugins;
@@ -355,55 +354,69 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
     protected abstract bool IsNavmesh(IMajorRecordGetter record);
     protected abstract bool IsPlaced(IMajorRecordGetter record);
 
-    protected virtual bool ShouldIgnoreForItmComparison(IMajorRecordGetter record)
+    private bool ShouldIgnoreForItmComparison(IMajorRecordGetter record)
     {
-        return record switch
+        switch (record)
         {
-            // Skyrim record types
-            // Fallout 4 record types
-            // Oblivion record types
-            Mutagen.Bethesda.Skyrim.ICellGetter
-                or Mutagen.Bethesda.Skyrim.IQuestGetter
-                or Mutagen.Bethesda.Fallout4.ICellGetter
-                or Mutagen.Bethesda.Fallout4.IQuestGetter
-                or Mutagen.Bethesda.Oblivion.ICellGetter or Mutagen.Bethesda.Oblivion.IQuestGetter => true,
-            _ => false
-        };
+            // Skyrim specific record types to ignore
+            case Mutagen.Bethesda.Skyrim.IQuestGetter:
+            case Mutagen.Bethesda.Skyrim.ICellGetter: // CELL
+            case Mutagen.Bethesda.Skyrim.INavigationMeshGetter: // NAVM
+            case Mutagen.Bethesda.Skyrim.IPlacedGetter: // REFR
+            case Mutagen.Bethesda.Skyrim.IWorldspaceGetter: // WRLD
+            case Mutagen.Bethesda.Skyrim.ILandscapeGetter: // LAND
+            case Mutagen.Bethesda.Skyrim.ILandscapeTextureGetter: // LTEX
+            case Mutagen.Bethesda.Skyrim.ILightGetter: // LIGH
+            case Mutagen.Bethesda.Skyrim.IIdleAnimationGetter: // IDLE
+            case Mutagen.Bethesda.Skyrim.IPackageGetter: // PACK
+            // Fallout 4 specific exclusions
+            case Mutagen.Bethesda.Fallout4.INavigationMeshGetter: // NAVM for Fallout 4
+            case Mutagen.Bethesda.Fallout4.IPlacedGetter: // REFR for Fallout 4
+            case Mutagen.Bethesda.Fallout4.IWorldspaceGetter: // WRLD for Fallout 4
+            case Mutagen.Bethesda.Fallout4.ILandscapeGetter: // LAND for Fallout 4
+            case Mutagen.Bethesda.Fallout4.ILandscapeTextureGetter: // LTEX for Fallout 4
+            case Mutagen.Bethesda.Fallout4.ILightGetter: // LIGH for Fallout 4
+            case Mutagen.Bethesda.Fallout4.IIdleAnimationGetter: // IDLE for Fallout 4
+            case Mutagen.Bethesda.Fallout4.IPackageGetter: // PACK for Fallout 4
+            case Mutagen.Bethesda.Fallout4.IQuestGetter: // QUST for Fallout 4
+            case Mutagen.Bethesda.Fallout4.ICellGetter: // CELL for Fallout 
+            // Oblivion specific exclusions (if any)
+            case Mutagen.Bethesda.Oblivion.IQuestGetter: // QUST for Oblivion
+            case Mutagen.Bethesda.Oblivion.ILandscapeGetter: // LAND for Oblivion
+            case Mutagen.Bethesda.Oblivion.ICellGetter: // CELL for Oblivion
+            case Mutagen.Bethesda.Oblivion.IPlacedGetter: // REFR for Oblivion
+            case Mutagen.Bethesda.Oblivion.IWorldspaceGetter: // WRLD for Oblivion
+            case Mutagen.Bethesda.Oblivion.ILightGetter: // LIGH for Oblivion
+            case Mutagen.Bethesda.Oblivion.IIdleAnimationGetter: // IDLE for Oblivion
+                return true; // QUST
+            default:
+                // Default case: Do not ignore
+                return false;
+        }
     }
 
     private bool CompareGenericRecord(IMajorRecordGetter current, IMajorRecordGetter master)
     {
-        using var currentStream = new MemoryStream();
-        using var masterStream = new MemoryStream();
-
-        try
-        {
-            WriteRecordData(current, currentStream);
-            WriteRecordData(master, masterStream);
-
-            if (currentStream.Length != masterStream.Length) return false;
-
-            currentStream.Position = 0;
-            masterStream.Position = 0;
-
-            var currentData = currentStream.ToArray();
-            var masterData = masterStream.ToArray();
-
-            return currentData.SequenceEqual(masterData);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error comparing records: {ex.Message}");
+        if (current.GetType() != master.GetType())
             return false;
+
+        // Compare properties using reflection
+        foreach (var property in current.GetType().GetProperties())
+        {
+            // Get property values
+            var currentValue = property.GetValue(current);
+            var masterValue = property.GetValue(master);
+
+            // If they're both null, treat as identical
+            if (currentValue == null && masterValue == null)
+                continue;
+
+            // If either one is null, or if the values differ, not identical
+            if (currentValue == null || masterValue == null || !currentValue.Equals(masterValue))
+                return false;
         }
-    }
 
-    private void WriteRecordData(IMajorRecordGetter record, Stream stream)
-    {
-        using var writer = new BinaryWriter(stream, Encoding.UTF8, true);
-
-        // Write common record data
-        writer.Write(record.EditorID ?? string.Empty);
+        return true; // All properties matched
     }
 
     private bool AreRecordsIdentical(IMajorRecordGetter current, IMajorRecordGetter master)
@@ -553,14 +566,15 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         return true;
     }
 
-    private bool CompareSkyrimConstructibleObject(Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter current, Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter? master)
+    private bool CompareSkyrimConstructibleObject(Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter current,
+        Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter? master)
     {
         if (master == null) return false;
 
-        if (!FormKeyComparer.Equal(current.WorkbenchKeyword.FormKey, master.WorkbenchKeyword.FormKey)) 
+        if (!FormKeyComparer.Equal(current.WorkbenchKeyword.FormKey, master.WorkbenchKeyword.FormKey))
             return false;
 
-        if (!FormKeyComparer.Equal(current.CreatedObject.FormKey, master.CreatedObject.FormKey)) 
+        if (!FormKeyComparer.Equal(current.CreatedObject.FormKey, master.CreatedObject.FormKey))
             return false;
 
         var currentItems = current.Items?.ToList() ?? [];
@@ -572,7 +586,7 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
             .ToList();
         var sortedMaster = masterItems
             .ToList();
-        
+
         var currentCount = sortedCurrent.Count;
         var masterCount = sortedMaster.Count;
 
@@ -584,7 +598,7 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
             // Compare both the FormID of the referenced item and the count in the entry
             if (currentItems[i].Item.Item.FormKey != masterItems[i].Item.Item.FormKey)
                 return false;
-    
+
             // Compare the count/quantity in the container entry
             if (currentItems[i].Item.Count != masterItems[i].Item.Count)
                 return false;
@@ -725,7 +739,8 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         return true;
     }
 
-    private bool CompareOblivionLeveledSpell(Mutagen.Bethesda.Oblivion.ILeveledSpellGetter current, Mutagen.Bethesda.Oblivion.ILeveledSpellGetter? master)
+    private bool CompareOblivionLeveledSpell(Mutagen.Bethesda.Oblivion.ILeveledSpellGetter current,
+        Mutagen.Bethesda.Oblivion.ILeveledSpellGetter? master)
     {
         if (master == null) return false;
 
