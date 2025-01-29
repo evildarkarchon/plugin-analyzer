@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using CommandLine;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Plugins;
@@ -9,6 +10,13 @@ using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Oblivion;
 using Noggog;
+using IConstructibleObjectGetter = Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter;
+using ILeveledItemEntryGetter = Mutagen.Bethesda.Skyrim.ILeveledItemEntryGetter;
+using ILeveledItemGetter = Mutagen.Bethesda.Skyrim.ILeveledItemGetter;
+using ILeveledNpcEntryGetter = Mutagen.Bethesda.Skyrim.ILeveledNpcEntryGetter;
+using ILeveledNpcGetter = Mutagen.Bethesda.Skyrim.ILeveledNpcGetter;
+using ILeveledSpellEntryGetter = Mutagen.Bethesda.Skyrim.ILeveledSpellEntryGetter;
+using ILeveledSpellGetter = Mutagen.Bethesda.Skyrim.ILeveledSpellGetter;
 
 namespace PluginAnalyzer;
 
@@ -343,19 +351,421 @@ public class Program
     }
 }
 
-/// <summary>
-/// Represents the base class for analyzing plugin files for various games.
-/// Provides common functionality such as analyzing changes, deletions,
-/// and other metrics related to the plugin's records.
-/// </summary>
-/// <typeparam name="TMod">The type of the mod being analyzed, which must implement IMod.</typeparam>
-/// <typeparam name="TModGetter">The type of the mod getter being analyzed, which must implement IModGetter.</typeparam>
 public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, ILinkCache<TMod, TModGetter> linkCache)
     where TMod : class, IMod, TModGetter
     where TModGetter : class, IModGetter
 {
     protected abstract bool IsNavmesh(IMajorRecordGetter record);
     protected abstract bool IsPlaced(IMajorRecordGetter record);
+
+    protected virtual bool ShouldIgnoreForItmComparison(IMajorRecordGetter record)
+    {
+        return record switch
+        {
+            // Skyrim record types
+            // Fallout 4 record types
+            // Oblivion record types
+            Mutagen.Bethesda.Skyrim.ICellGetter
+                or Mutagen.Bethesda.Skyrim.IQuestGetter
+                or Mutagen.Bethesda.Fallout4.ICellGetter
+                or Mutagen.Bethesda.Fallout4.IQuestGetter
+                or Mutagen.Bethesda.Oblivion.ICellGetter or Mutagen.Bethesda.Oblivion.IQuestGetter => true,
+            _ => false
+        };
+    }
+
+    private bool CompareGenericRecord(IMajorRecordGetter current, IMajorRecordGetter master)
+    {
+        using var currentStream = new MemoryStream();
+        using var masterStream = new MemoryStream();
+
+        try
+        {
+            WriteRecordData(current, currentStream);
+            WriteRecordData(master, masterStream);
+
+            if (currentStream.Length != masterStream.Length) return false;
+
+            currentStream.Position = 0;
+            masterStream.Position = 0;
+
+            var currentData = currentStream.ToArray();
+            var masterData = masterStream.ToArray();
+
+            return currentData.SequenceEqual(masterData);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error comparing records: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void WriteRecordData(IMajorRecordGetter record, Stream stream)
+    {
+        using var writer = new BinaryWriter(stream, Encoding.UTF8, true);
+
+        // Write common record data
+        writer.Write(record.EditorID ?? string.Empty);
+    }
+
+    protected virtual bool AreRecordsIdentical(IMajorRecordGetter current, IMajorRecordGetter master)
+    {
+        if (current.GetType() != master.GetType()) return false;
+
+        // Basic equivalency checks
+        if (current.EditorID != master.EditorID) return false;
+        if (current.IsDeleted != master.IsDeleted) return false;
+        if (current.IsCompressed != master.IsCompressed) return false;
+
+        // Compare specific record types
+        return current switch
+        {
+            // Skyrim specific comparisons
+            ILeveledItemGetter levItemSkyrim =>
+                CompareSkyrimLeveledItem(levItemSkyrim, master as ILeveledItemGetter),
+
+            ILeveledNpcGetter levNpcSkyrim =>
+                CompareSkyrimLeveledNpc(levNpcSkyrim, master as ILeveledNpcGetter),
+
+            ILeveledSpellGetter levSpellSkyrim =>
+                CompareSkyrimLeveledSpell(levSpellSkyrim, master as ILeveledSpellGetter),
+
+            Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter constrObjSkyrim =>
+                CompareSkyrimConstructibleObject(constrObjSkyrim,
+                    master as Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter),
+
+            // Fallout 4 specific comparisons
+            Mutagen.Bethesda.Fallout4.ILeveledItemGetter levItemFallout =>
+                CompareFallout4LeveledItem(levItemFallout, master as Mutagen.Bethesda.Fallout4.ILeveledItemGetter),
+
+            Mutagen.Bethesda.Fallout4.ILeveledNpcGetter levNpcFallout =>
+                CompareFallout4LeveledNpc(levNpcFallout, master as Mutagen.Bethesda.Fallout4.ILeveledNpcGetter),
+
+            IConstructibleObjectGetter constrObjFallout =>
+                CompareFallout4ConstructibleObject(constrObjFallout,
+                    master as IConstructibleObjectGetter),
+
+            // Oblivion specific comparisons
+            Mutagen.Bethesda.Oblivion.ILeveledItemGetter levItemOblivion =>
+                CompareOblivionLeveledItem(levItemOblivion, master as Mutagen.Bethesda.Oblivion.ILeveledItemGetter),
+
+            Mutagen.Bethesda.Oblivion.ILeveledSpellGetter levSpellOblivion =>
+                CompareOblivionLeveledSpell(levSpellOblivion, master as Mutagen.Bethesda.Oblivion.ILeveledSpellGetter),
+
+            // Cells and other special records that need binary comparison
+            _ => !ShouldIgnoreForItmComparison(current) && CompareGenericRecord(current, master)
+        };
+    }
+
+    private bool CompareSkyrimLeveledItem(ILeveledItemGetter current,
+        ILeveledItemGetter? master)
+    {
+        if (master == null) return false;
+
+        if (current.Flags != master.Flags) return false;
+        if (current.ChanceNone != master.ChanceNone) return false;
+
+        var currentEntries = current.Entries?.ToList() ?? new List<ILeveledItemEntryGetter>();
+        var masterEntries = master.Entries?.ToList() ?? new List<ILeveledItemEntryGetter>();
+
+        if (currentEntries.Count() != masterEntries.Count()) return false;
+
+        var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
+        var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
+
+        var entryCount = sortedCurrent.Count();
+        for (int i = 0; i < entryCount; i++)
+        {
+            var currentEntry = sortedCurrent[i];
+            var masterEntry = sortedMaster[i];
+
+            if (currentEntry.Data?.Level != masterEntry.Data?.Level) return false;
+            if (currentEntry.Data?.Count != masterEntry.Data?.Count) return false;
+
+            var currentFormKey = currentEntry.Data?.Reference.FormKey;
+            var masterFormKey = masterEntry.Data?.Reference.FormKey;
+            if (currentFormKey != masterFormKey) return false;
+        }
+
+        return true;
+    }
+
+    private bool CompareSkyrimLeveledNpc(ILeveledNpcGetter current,
+        ILeveledNpcGetter? master)
+    {
+        if (master == null) return false;
+
+        if (current.Flags != master.Flags) return false;
+        if (current.ChanceNone != master.ChanceNone) return false;
+
+        var currentEntries = current.Entries?.ToList() ?? new List<ILeveledNpcEntryGetter>();
+        var masterEntries = master.Entries?.ToList() ?? new List<ILeveledNpcEntryGetter>();
+
+        if (currentEntries.Count() != masterEntries.Count()) return false;
+
+        var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
+        var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
+
+        var entryCount = sortedCurrent.Count();
+        for (int i = 0; i < entryCount; i++)
+        {
+            var currentEntry = sortedCurrent[i];
+            var masterEntry = sortedMaster[i];
+
+            if (currentEntry.Data?.Level != masterEntry.Data?.Level) return false;
+            if (currentEntry.Data?.Count != masterEntry.Data?.Count) return false;
+
+            var currentFormKey = currentEntry.Data?.Reference.FormKey;
+            var masterFormKey = masterEntry.Data?.Reference.FormKey;
+            if (currentFormKey != masterFormKey) return false;
+        }
+
+        return true;
+    }
+
+    private bool CompareSkyrimLeveledSpell(ILeveledSpellGetter current,
+        ILeveledSpellGetter? master)
+    {
+        if (master == null) return false;
+
+        if (current.Flags != master.Flags) return false;
+        if (current.ChanceNone != master.ChanceNone) return false;
+
+        var currentEntries = current.Entries?.ToList() ?? new List<ILeveledSpellEntryGetter>();
+        var masterEntries = master.Entries?.ToList() ?? new List<ILeveledSpellEntryGetter>();
+
+        if (currentEntries.Count() != masterEntries.Count()) return false;
+
+        var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
+        var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
+
+        var entryCount = sortedCurrent.Count();
+        for (int i = 0; i < entryCount; i++)
+        {
+            var currentEntry = sortedCurrent[i];
+            var masterEntry = sortedMaster[i];
+
+            if (currentEntry.Data?.Level != masterEntry.Data?.Level) return false;
+
+            var currentFormKey = currentEntry.Data?.Reference.FormKey;
+            var masterFormKey = masterEntry.Data?.Reference.FormKey;
+            if (currentFormKey != masterFormKey) return false;
+        }
+
+        return true;
+    }
+
+    private bool CompareSkyrimConstructibleObject(Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter current, Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter? master)
+    {
+        if (master == null) return false;
+
+        if (!FormKeyComparer.Equal(current.WorkbenchKeyword.FormKey, master.WorkbenchKeyword.FormKey)) 
+            return false;
+
+        if (!FormKeyComparer.Equal(current.CreatedObject.FormKey, master.CreatedObject.FormKey)) 
+            return false;
+
+        var currentItems = current.Items?.ToList() ?? new List<Mutagen.Bethesda.Skyrim.IContainerEntryGetter>();
+        var masterItems = master.Items?.ToList() ?? new List<Mutagen.Bethesda.Skyrim.IContainerEntryGetter>();
+
+        if (currentItems.Count() != masterItems.Count()) return false;
+
+        var sortedCurrent = currentItems
+            .ToList();
+        var sortedMaster = masterItems
+            .ToList();
+        
+        var currentCount = sortedCurrent.Count;
+        var masterCount = sortedMaster.Count;
+
+        if (currentCount != masterCount)
+            return false;
+
+        for (int i = 0; i < currentCount; i++)
+        {
+            // Compare both the FormID of the referenced item and the count in the entry
+            if (currentItems[i].Item.Item.FormKey != masterItems[i].Item.Item.FormKey)
+                return false;
+    
+            // Compare the count/quantity in the container entry
+            if (currentItems[i].Item.Count != masterItems[i].Item.Count)
+                return false;
+        }
+
+        return true;
+    }
+
+    private bool CompareFallout4LeveledItem(Mutagen.Bethesda.Fallout4.ILeveledItemGetter current,
+        Mutagen.Bethesda.Fallout4.ILeveledItemGetter? master)
+    {
+        if (master == null) return false;
+
+        if (current.Flags != master.Flags) return false;
+        if (current.ChanceNone != master.ChanceNone) return false;
+
+        var currentEntries = current.Entries?.ToList() ?? new List<Mutagen.Bethesda.Fallout4.ILeveledItemEntryGetter>();
+        var masterEntries = master.Entries?.ToList() ?? new List<Mutagen.Bethesda.Fallout4.ILeveledItemEntryGetter>();
+
+        if (currentEntries.Count() != masterEntries.Count()) return false;
+
+        var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
+        var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
+
+        var entryCount = sortedCurrent.Count();
+        for (int i = 0; i < entryCount; i++)
+        {
+            var currentEntry = sortedCurrent[i];
+            var masterEntry = sortedMaster[i];
+
+            if (currentEntry.Data?.Level != masterEntry.Data?.Level) return false;
+            if (currentEntry.Data?.Count != masterEntry.Data?.Count) return false;
+
+            var currentFormKey = currentEntry.Data?.Reference.FormKey;
+            var masterFormKey = masterEntry.Data?.Reference.FormKey;
+            if (currentFormKey != masterFormKey) return false;
+        }
+
+        return true;
+    }
+
+    private bool CompareFallout4LeveledNpc(Mutagen.Bethesda.Fallout4.ILeveledNpcGetter current,
+        Mutagen.Bethesda.Fallout4.ILeveledNpcGetter? master)
+    {
+        if (master == null) return false;
+
+        if (current.Flags != master.Flags) return false;
+        if (current.ChanceNone != master.ChanceNone) return false;
+
+        var currentEntries = current.Entries?.ToList() ?? new List<Mutagen.Bethesda.Fallout4.ILeveledNpcEntryGetter>();
+        var masterEntries = master.Entries?.ToList() ?? new List<Mutagen.Bethesda.Fallout4.ILeveledNpcEntryGetter>();
+
+        if (currentEntries.Count() != masterEntries.Count()) return false;
+
+        var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
+        var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
+
+        var entryCount = sortedCurrent.Count();
+        for (int i = 0; i < entryCount; i++)
+        {
+            var currentEntry = sortedCurrent[i];
+            var masterEntry = sortedMaster[i];
+
+            if (currentEntry.Data?.Level != masterEntry.Data?.Level) return false;
+            if (currentEntry.Data?.Count != masterEntry.Data?.Count) return false;
+
+            var currentFormKey = currentEntry.Data?.Reference.FormKey;
+            var masterFormKey = masterEntry.Data?.Reference.FormKey;
+            if (currentFormKey != masterFormKey) return false;
+        }
+
+        return true;
+    }
+
+    private bool CompareFallout4ConstructibleObject(IConstructibleObjectGetter current,
+        IConstructibleObjectGetter? master)
+    {
+        if (master == null) return false;
+
+        if (!FormKeyComparer.Equal(current.WorkbenchKeyword.FormKey, master.WorkbenchKeyword.FormKey))
+            return false;
+
+        if (!FormKeyComparer.Equal(current.CreatedObject.FormKey, master.CreatedObject.FormKey))
+            return false;
+
+        var currentComponents = current.Components?.ToList() ??
+                                new List<IConstructibleObjectComponentGetter>();
+        var masterComponents = master.Components?.ToList() ??
+                               new List<IConstructibleObjectComponentGetter>();
+
+        if (currentComponents.Count() != masterComponents.Count()) return false;
+
+        var sortedCurrent = currentComponents.OrderBy(i => i.Component.FormKey.ID).ToList();
+        var sortedMaster = masterComponents.OrderBy(i => i.Component.FormKey.ID).ToList();
+
+        var componentCount = sortedCurrent.Count();
+        for (int i = 0; i < componentCount; i++)
+        {
+            if (!FormKeyComparer.Equal(sortedCurrent[i].Component.FormKey, sortedMaster[i].Component.FormKey))
+                return false;
+            if (sortedCurrent[i].Count != sortedMaster[i].Count)
+                return false;
+        }
+
+        return true;
+    }
+
+    private bool CompareOblivionLeveledItem(Mutagen.Bethesda.Oblivion.ILeveledItemGetter current,
+        Mutagen.Bethesda.Oblivion.ILeveledItemGetter? master)
+    {
+        if (master == null) return false;
+
+        if (current.Flags != master.Flags) return false;
+        if (current.ChanceNone != master.ChanceNone) return false;
+
+        var currentEntries = current.Entries.ToList();
+        var masterEntries = master.Entries.ToList();
+
+        if (currentEntries.Count() != masterEntries.Count()) return false;
+
+        var sortedCurrent = currentEntries.OrderBy(e => e.Reference.FormKey.ID).ToList();
+        var sortedMaster = masterEntries.OrderBy(e => e.Reference.FormKey.ID).ToList();
+
+        var entryCount = sortedCurrent.Count();
+        for (int i = 0; i < entryCount; i++)
+        {
+            var currentEntry = sortedCurrent[i];
+            var masterEntry = sortedMaster[i];
+
+            if (currentEntry.Level != masterEntry.Level) return false;
+            if (currentEntry.Count != masterEntry.Count) return false;
+
+            var currentFormKey = currentEntry.Reference.FormKey;
+            var masterFormKey = masterEntry.Reference.FormKey;
+            if (currentFormKey != masterFormKey) return false;
+        }
+
+        return true;
+    }
+
+    private bool CompareOblivionLeveledSpell(Mutagen.Bethesda.Oblivion.ILeveledSpellGetter current, Mutagen.Bethesda.Oblivion.ILeveledSpellGetter? master)
+    {
+        if (master == null) return false;
+
+        if (current.Flags != master.Flags) return false;
+        if (current.ChanceNone != master.ChanceNone) return false;
+
+        var currentEntries = current.Entries.ToList();
+        var masterEntries = master.Entries.ToList();
+
+        if (currentEntries.Count() != masterEntries.Count()) return false;
+
+        var sortedCurrent = currentEntries
+            .OrderBy(e => e.Reference.FormKey)
+            .ToList();
+        var sortedMaster = masterEntries
+            .OrderBy(e => e.Reference.FormKey)
+            .ToList();
+
+        var entryCount = sortedCurrent.Count();
+        for (int i = 0; i < entryCount; i++)
+        {
+            if (sortedCurrent[i].Level != sortedMaster[i].Level) return false;
+            if (!Equals(sortedCurrent[i].Reference, sortedMaster[i].Reference)) return false;
+        }
+
+        return true;
+    }
+
+    private static class FormKeyComparer
+    {
+        public static bool Equal(FormKey? a, FormKey? b)
+        {
+            if (!a.HasValue && !b.HasValue) return true;
+            if (!a.HasValue || !b.HasValue) return false;
+            return a.Value.ID == b.Value.ID;
+        }
+    }
 
     public async Task<AnalysisResults> Analyze()
     {
@@ -373,11 +783,18 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
 
                 var formKey = record.FormKey;
                 if (!linkCache.TryResolve<IMajorRecordGetter>(formKey, out var winning)) continue;
-                
+
                 var winningModKey = winning.FormKey.ModKey;
-                if (winningModKey != plugin.ModKey && record.Equals(winning))
+                if (winningModKey != plugin.ModKey && !ShouldIgnoreForItmComparison(record))
                 {
-                    results.IdenticalToMasterCount++;
+                    // Get the original master record this overrides
+                    if (TryGetMasterRecord(record, out var masterRecord))
+                    {
+                        if (AreRecordsIdentical(record, masterRecord))
+                        {
+                            results.IdenticalToMasterCount++;
+                        }
+                    }
                 }
 
                 if (record.FormKey.ID > winning.FormKey.ID)
@@ -388,6 +805,28 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         });
 
         return results;
+    }
+
+    private bool TryGetMasterRecord(IMajorRecordGetter record, [NotNullWhen(true)] out IMajorRecordGetter? masterRecord)
+    {
+        masterRecord = null;
+
+        // Get all masters for this plugin
+        var masters = plugin.MasterReferences.Select(m => m.Master).ToList();
+
+        // Check each master in reverse order (latest master first)
+        for (var i = masters.Count - 1; i >= 0; i--)
+        {
+            var master = masters[i];
+            var masterFormKey = new FormKey(master, record.FormKey.ID);
+
+            if (linkCache.TryResolve<IMajorRecordGetter>(masterFormKey, out masterRecord))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 
