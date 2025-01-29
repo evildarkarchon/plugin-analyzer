@@ -9,10 +9,6 @@ using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Oblivion;
 using Noggog;
-using IConstructibleObjectGetter = Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter;
-using ILeveledItemGetter = Mutagen.Bethesda.Skyrim.ILeveledItemGetter;
-using ILeveledNpcGetter = Mutagen.Bethesda.Skyrim.ILeveledNpcGetter;
-using ILeveledSpellGetter = Mutagen.Bethesda.Skyrim.ILeveledSpellGetter;
 
 namespace PluginAnalyzer;
 
@@ -369,6 +365,7 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
             case Mutagen.Bethesda.Skyrim.ILightGetter: // LIGH
             case Mutagen.Bethesda.Skyrim.IIdleAnimationGetter: // IDLE
             case Mutagen.Bethesda.Skyrim.IPackageGetter: // PACK
+            case Mutagen.Bethesda.Skyrim.IDialogGetter: // DIAL
             // Fallout 4 specific exclusions
             case Mutagen.Bethesda.Fallout4.INavigationMeshGetter: // NAVM for Fallout 4
             case Mutagen.Bethesda.Fallout4.IPlacedGetter: // REFR for Fallout 4
@@ -379,7 +376,8 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
             case Mutagen.Bethesda.Fallout4.IIdleAnimationGetter: // IDLE for Fallout 4
             case Mutagen.Bethesda.Fallout4.IPackageGetter: // PACK for Fallout 4
             case Mutagen.Bethesda.Fallout4.IQuestGetter: // QUST for Fallout 4
-            case Mutagen.Bethesda.Fallout4.ICellGetter: // CELL for Fallout 
+            case Mutagen.Bethesda.Fallout4.ICellGetter: // CELL for Fallout
+            case Mutagen.Bethesda.Fallout4.IDialogTopicGetter: // DIAL for Fallout
             // Oblivion specific exclusions (if any)
             case Mutagen.Bethesda.Oblivion.IQuestGetter: // QUST for Oblivion
             case Mutagen.Bethesda.Oblivion.ILandscapeGetter: // LAND for Oblivion
@@ -388,7 +386,7 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
             case Mutagen.Bethesda.Oblivion.IWorldspaceGetter: // WRLD for Oblivion
             case Mutagen.Bethesda.Oblivion.ILightGetter: // LIGH for Oblivion
             case Mutagen.Bethesda.Oblivion.IIdleAnimationGetter: // IDLE for Oblivion
-                return true; // QUST
+                return true;
             default:
                 // Default case: Do not ignore
                 return false;
@@ -432,14 +430,14 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         return current switch
         {
             // Skyrim specific comparisons
-            ILeveledItemGetter levItemSkyrim =>
-                CompareSkyrimLeveledItem(levItemSkyrim, master as ILeveledItemGetter),
+            Mutagen.Bethesda.Skyrim.ILeveledItemGetter levItemSkyrim =>
+                CompareSkyrimLeveledItem(levItemSkyrim, master as Mutagen.Bethesda.Skyrim.ILeveledItemGetter),
 
-            ILeveledNpcGetter levNpcSkyrim =>
-                CompareSkyrimLeveledNpc(levNpcSkyrim, master as ILeveledNpcGetter),
+            Mutagen.Bethesda.Skyrim.ILeveledNpcGetter levNpcSkyrim =>
+                CompareSkyrimLeveledNpc(levNpcSkyrim, master as Mutagen.Bethesda.Skyrim.ILeveledNpcGetter),
 
-            ILeveledSpellGetter levSpellSkyrim =>
-                CompareSkyrimLeveledSpell(levSpellSkyrim, master as ILeveledSpellGetter),
+            Mutagen.Bethesda.Skyrim.ILeveledSpellGetter levSpellSkyrim =>
+                CompareSkyrimLeveledSpell(levSpellSkyrim, master as Mutagen.Bethesda.Skyrim.ILeveledSpellGetter),
 
             Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter constrObjSkyrim =>
                 CompareSkyrimConstructibleObject(constrObjSkyrim,
@@ -452,9 +450,9 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
             Mutagen.Bethesda.Fallout4.ILeveledNpcGetter levNpcFallout =>
                 CompareFallout4LeveledNpc(levNpcFallout, master as Mutagen.Bethesda.Fallout4.ILeveledNpcGetter),
 
-            IConstructibleObjectGetter constrObjFallout =>
+            Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter constrObjFallout =>
                 CompareFallout4ConstructibleObject(constrObjFallout,
-                    master as IConstructibleObjectGetter),
+                    master as Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter),
 
             // Oblivion specific comparisons
             Mutagen.Bethesda.Oblivion.ILeveledItemGetter levItemOblivion =>
@@ -468,8 +466,8 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         };
     }
 
-    private bool CompareSkyrimLeveledItem(ILeveledItemGetter current,
-        ILeveledItemGetter? master)
+    private bool CompareSkyrimLeveledItem(Mutagen.Bethesda.Skyrim.ILeveledItemGetter current,
+        Mutagen.Bethesda.Skyrim.ILeveledItemGetter? master)
     {
         if (master == null) return false;
 
@@ -501,8 +499,8 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         return true;
     }
 
-    private bool CompareSkyrimLeveledNpc(ILeveledNpcGetter current,
-        ILeveledNpcGetter? master)
+    private bool CompareSkyrimLeveledNpc(Mutagen.Bethesda.Skyrim.ILeveledNpcGetter current,
+        Mutagen.Bethesda.Skyrim.ILeveledNpcGetter? master)
     {
         if (master == null) return false;
 
@@ -534,8 +532,8 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         return true;
     }
 
-    private bool CompareSkyrimLeveledSpell(ILeveledSpellGetter current,
-        ILeveledSpellGetter? master)
+    private bool CompareSkyrimLeveledSpell(Mutagen.Bethesda.Skyrim.ILeveledSpellGetter current,
+        Mutagen.Bethesda.Skyrim.ILeveledSpellGetter? master)
     {
         if (master == null) return false;
 
@@ -673,8 +671,8 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         return true;
     }
 
-    private bool CompareFallout4ConstructibleObject(IConstructibleObjectGetter current,
-        IConstructibleObjectGetter? master)
+    private bool CompareFallout4ConstructibleObject(Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter current,
+        Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter? master)
     {
         if (master == null) return false;
 

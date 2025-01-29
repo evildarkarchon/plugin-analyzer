@@ -4,6 +4,8 @@
     <option name="locations">
       <list>
         <option value="$PROJECT_DIR$/bin/Release/net8.0/win-x64/SingleFile" />
+        <option value="$PROJECT_DIR$/bin/Release/net8.0/win-x64/Framework" />
+        <option value="$PROJECT_DIR$/bin/Release/net8.0/win-x64/Standalone" />
       </list>
     </option>
   </component>
