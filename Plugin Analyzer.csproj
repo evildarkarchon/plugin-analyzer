@@ -6,6 +6,7 @@
         <RootNamespace>Plugin_Analyzer</RootNamespace>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <AssemblyName>PluginAnalyzer</AssemblyName>
     </PropertyGroup>
 
     <ItemGroup>

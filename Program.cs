@@ -64,8 +64,12 @@ public class Program
                             var directory = new DirectoryInfo(pluginPath);
                             Console.WriteLine($"Analyzing all plugins in directory: {directory.FullName}");
 
-                            // Handle directory case: Analyze all files ending with .esp/.esm
-                            var pluginFiles = directory.GetFiles("*.es[m|p]", SearchOption.TopDirectoryOnly);
+                            // Fix file filter to be case-insensitive and more robust
+                            var pluginFiles = directory.GetFiles("*.*", SearchOption.TopDirectoryOnly)
+                                .Where(file => file.Extension.Equals(".esp", StringComparison.OrdinalIgnoreCase) ||
+                                               file.Extension.Equals(".esm", StringComparison.OrdinalIgnoreCase) ||
+                                               file.Extension.Equals(".esl", StringComparison.OrdinalIgnoreCase))
+                                .ToArray();
                             if (pluginFiles.Length == 0)
                             {
                                 Console.WriteLine("No plugin files (.esp or .esm) found in the directory.");
@@ -367,22 +371,18 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
                     else if (IsPlaced(record)) results.DeletedReferencesCount++;
                 }
 
-                if (record is { } majorRecord)
+                var formKey = record.FormKey;
+                if (!linkCache.TryResolve<IMajorRecordGetter>(formKey, out var winning)) continue;
+                
+                var winningModKey = winning.FormKey.ModKey;
+                if (winningModKey != plugin.ModKey && record.Equals(winning))
                 {
-                    var formKey = majorRecord.FormKey;
-                    if (linkCache.TryResolve<IMajorRecordGetter>(formKey, out var winning))
-                    {
-                        var winningModKey = winning.FormKey.ModKey;
-                        if (winningModKey != plugin.ModKey && record.Equals(winning))
-                        {
-                            results.IdenticalToMasterCount++;
-                        }
+                    results.IdenticalToMasterCount++;
+                }
 
-                        if (record.FormKey.ID > winning.FormKey.ID)
-                        {
-                            results.HigherIndexCount++;
-                        }
-                    }
+                if (record.FormKey.ID > winning.FormKey.ID)
+                {
+                    results.HigherIndexCount++;
                 }
             }
         });
