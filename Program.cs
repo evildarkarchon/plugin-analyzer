@@ -11,11 +11,8 @@ using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Oblivion;
 using Noggog;
 using IConstructibleObjectGetter = Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter;
-using ILeveledItemEntryGetter = Mutagen.Bethesda.Skyrim.ILeveledItemEntryGetter;
 using ILeveledItemGetter = Mutagen.Bethesda.Skyrim.ILeveledItemGetter;
-using ILeveledNpcEntryGetter = Mutagen.Bethesda.Skyrim.ILeveledNpcEntryGetter;
 using ILeveledNpcGetter = Mutagen.Bethesda.Skyrim.ILeveledNpcGetter;
-using ILeveledSpellEntryGetter = Mutagen.Bethesda.Skyrim.ILeveledSpellEntryGetter;
 using ILeveledSpellGetter = Mutagen.Bethesda.Skyrim.ILeveledSpellGetter;
 
 namespace PluginAnalyzer;
@@ -409,7 +406,7 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         writer.Write(record.EditorID ?? string.Empty);
     }
 
-    protected virtual bool AreRecordsIdentical(IMajorRecordGetter current, IMajorRecordGetter master)
+    private bool AreRecordsIdentical(IMajorRecordGetter current, IMajorRecordGetter master)
     {
         if (current.GetType() != master.GetType()) return false;
 
@@ -466,16 +463,16 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         if (current.Flags != master.Flags) return false;
         if (current.ChanceNone != master.ChanceNone) return false;
 
-        var currentEntries = current.Entries?.ToList() ?? new List<ILeveledItemEntryGetter>();
-        var masterEntries = master.Entries?.ToList() ?? new List<ILeveledItemEntryGetter>();
+        var currentEntries = current.Entries?.ToList() ?? [];
+        var masterEntries = master.Entries?.ToList() ?? [];
 
-        if (currentEntries.Count() != masterEntries.Count()) return false;
+        if (currentEntries.Count != masterEntries.Count) return false;
 
         var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
         var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
 
-        var entryCount = sortedCurrent.Count();
-        for (int i = 0; i < entryCount; i++)
+        var entryCount = sortedCurrent.Count;
+        for (var i = 0; i < entryCount; i++)
         {
             var currentEntry = sortedCurrent[i];
             var masterEntry = sortedMaster[i];
@@ -499,16 +496,16 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         if (current.Flags != master.Flags) return false;
         if (current.ChanceNone != master.ChanceNone) return false;
 
-        var currentEntries = current.Entries?.ToList() ?? new List<ILeveledNpcEntryGetter>();
-        var masterEntries = master.Entries?.ToList() ?? new List<ILeveledNpcEntryGetter>();
+        var currentEntries = current.Entries?.ToList() ?? [];
+        var masterEntries = master.Entries?.ToList() ?? [];
 
-        if (currentEntries.Count() != masterEntries.Count()) return false;
+        if (currentEntries.Count != masterEntries.Count) return false;
 
         var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
         var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
 
-        var entryCount = sortedCurrent.Count();
-        for (int i = 0; i < entryCount; i++)
+        var entryCount = sortedCurrent.Count;
+        for (var i = 0; i < entryCount; i++)
         {
             var currentEntry = sortedCurrent[i];
             var masterEntry = sortedMaster[i];
@@ -532,16 +529,16 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         if (current.Flags != master.Flags) return false;
         if (current.ChanceNone != master.ChanceNone) return false;
 
-        var currentEntries = current.Entries?.ToList() ?? new List<ILeveledSpellEntryGetter>();
-        var masterEntries = master.Entries?.ToList() ?? new List<ILeveledSpellEntryGetter>();
+        var currentEntries = current.Entries?.ToList() ?? [];
+        var masterEntries = master.Entries?.ToList() ?? [];
 
-        if (currentEntries.Count() != masterEntries.Count()) return false;
+        if (currentEntries.Count != masterEntries.Count) return false;
 
         var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
         var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
 
-        var entryCount = sortedCurrent.Count();
-        for (int i = 0; i < entryCount; i++)
+        var entryCount = sortedCurrent.Count;
+        for (var i = 0; i < entryCount; i++)
         {
             var currentEntry = sortedCurrent[i];
             var masterEntry = sortedMaster[i];
@@ -566,10 +563,10 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         if (!FormKeyComparer.Equal(current.CreatedObject.FormKey, master.CreatedObject.FormKey)) 
             return false;
 
-        var currentItems = current.Items?.ToList() ?? new List<Mutagen.Bethesda.Skyrim.IContainerEntryGetter>();
-        var masterItems = master.Items?.ToList() ?? new List<Mutagen.Bethesda.Skyrim.IContainerEntryGetter>();
+        var currentItems = current.Items?.ToList() ?? [];
+        var masterItems = master.Items?.ToList() ?? [];
 
-        if (currentItems.Count() != masterItems.Count()) return false;
+        if (currentItems.Count != masterItems.Count) return false;
 
         var sortedCurrent = currentItems
             .ToList();
@@ -582,7 +579,7 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         if (currentCount != masterCount)
             return false;
 
-        for (int i = 0; i < currentCount; i++)
+        for (var i = 0; i < currentCount; i++)
         {
             // Compare both the FormID of the referenced item and the count in the entry
             if (currentItems[i].Item.Item.FormKey != masterItems[i].Item.Item.FormKey)
@@ -604,16 +601,16 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         if (current.Flags != master.Flags) return false;
         if (current.ChanceNone != master.ChanceNone) return false;
 
-        var currentEntries = current.Entries?.ToList() ?? new List<Mutagen.Bethesda.Fallout4.ILeveledItemEntryGetter>();
-        var masterEntries = master.Entries?.ToList() ?? new List<Mutagen.Bethesda.Fallout4.ILeveledItemEntryGetter>();
+        var currentEntries = current.Entries?.ToList() ?? [];
+        var masterEntries = master.Entries?.ToList() ?? [];
 
-        if (currentEntries.Count() != masterEntries.Count()) return false;
+        if (currentEntries.Count != masterEntries.Count) return false;
 
         var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
         var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
 
-        var entryCount = sortedCurrent.Count();
-        for (int i = 0; i < entryCount; i++)
+        var entryCount = sortedCurrent.Count;
+        for (var i = 0; i < entryCount; i++)
         {
             var currentEntry = sortedCurrent[i];
             var masterEntry = sortedMaster[i];
@@ -637,16 +634,16 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         if (current.Flags != master.Flags) return false;
         if (current.ChanceNone != master.ChanceNone) return false;
 
-        var currentEntries = current.Entries?.ToList() ?? new List<Mutagen.Bethesda.Fallout4.ILeveledNpcEntryGetter>();
-        var masterEntries = master.Entries?.ToList() ?? new List<Mutagen.Bethesda.Fallout4.ILeveledNpcEntryGetter>();
+        var currentEntries = current.Entries?.ToList() ?? [];
+        var masterEntries = master.Entries?.ToList() ?? [];
 
-        if (currentEntries.Count() != masterEntries.Count()) return false;
+        if (currentEntries.Count != masterEntries.Count) return false;
 
         var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
         var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
 
-        var entryCount = sortedCurrent.Count();
-        for (int i = 0; i < entryCount; i++)
+        var entryCount = sortedCurrent.Count;
+        for (var i = 0; i < entryCount; i++)
         {
             var currentEntry = sortedCurrent[i];
             var masterEntry = sortedMaster[i];
@@ -674,17 +671,17 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
             return false;
 
         var currentComponents = current.Components?.ToList() ??
-                                new List<IConstructibleObjectComponentGetter>();
+                                [];
         var masterComponents = master.Components?.ToList() ??
-                               new List<IConstructibleObjectComponentGetter>();
+                               [];
 
-        if (currentComponents.Count() != masterComponents.Count()) return false;
+        if (currentComponents.Count != masterComponents.Count) return false;
 
         var sortedCurrent = currentComponents.OrderBy(i => i.Component.FormKey.ID).ToList();
         var sortedMaster = masterComponents.OrderBy(i => i.Component.FormKey.ID).ToList();
 
-        var componentCount = sortedCurrent.Count();
-        for (int i = 0; i < componentCount; i++)
+        var componentCount = sortedCurrent.Count;
+        for (var i = 0; i < componentCount; i++)
         {
             if (!FormKeyComparer.Equal(sortedCurrent[i].Component.FormKey, sortedMaster[i].Component.FormKey))
                 return false;
@@ -706,13 +703,13 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         var currentEntries = current.Entries.ToList();
         var masterEntries = master.Entries.ToList();
 
-        if (currentEntries.Count() != masterEntries.Count()) return false;
+        if (currentEntries.Count != masterEntries.Count) return false;
 
         var sortedCurrent = currentEntries.OrderBy(e => e.Reference.FormKey.ID).ToList();
         var sortedMaster = masterEntries.OrderBy(e => e.Reference.FormKey.ID).ToList();
 
-        var entryCount = sortedCurrent.Count();
-        for (int i = 0; i < entryCount; i++)
+        var entryCount = sortedCurrent.Count;
+        for (var i = 0; i < entryCount; i++)
         {
             var currentEntry = sortedCurrent[i];
             var masterEntry = sortedMaster[i];
@@ -738,7 +735,7 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         var currentEntries = current.Entries.ToList();
         var masterEntries = master.Entries.ToList();
 
-        if (currentEntries.Count() != masterEntries.Count()) return false;
+        if (currentEntries.Count != masterEntries.Count) return false;
 
         var sortedCurrent = currentEntries
             .OrderBy(e => e.Reference.FormKey)
@@ -747,8 +744,8 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
             .OrderBy(e => e.Reference.FormKey)
             .ToList();
 
-        var entryCount = sortedCurrent.Count();
-        for (int i = 0; i < entryCount; i++)
+        var entryCount = sortedCurrent.Count;
+        for (var i = 0; i < entryCount; i++)
         {
             if (sortedCurrent[i].Level != sortedMaster[i].Level) return false;
             if (!Equals(sortedCurrent[i].Reference, sortedMaster[i].Reference)) return false;
