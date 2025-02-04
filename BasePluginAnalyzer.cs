@@ -16,8 +16,6 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
     protected abstract bool ShouldIgnoreForItmComparison(IMajorRecordGetter record);
     protected abstract bool CompareGameSpecificRecord(IMajorRecordGetter current, IMajorRecordGetter master);
 
-    protected readonly ILinkCache<TMod, TModGetter> LinkCache = linkCache;
-
     protected bool CompareGenericRecord(IMajorRecordGetter current, IMajorRecordGetter master)
     {
         if (current.GetType() != master.GetType())
@@ -75,7 +73,7 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
                 }
 
                 var formKey = record.FormKey;
-                if (!LinkCache.TryResolve<IMajorRecordGetter>(formKey, out var winning)) continue;
+                if (!linkCache.TryResolve<IMajorRecordGetter>(formKey, out var winning)) continue;
 
                 var winningModKey = winning.FormKey.ModKey;
                 if (winningModKey != plugin.ModKey && !ShouldIgnoreForItmComparison(record))
@@ -112,7 +110,7 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
             var master = masters[i];
             var masterFormKey = new FormKey(master, record.FormKey.ID);
 
-            if (LinkCache.TryResolve<IMajorRecordGetter>(masterFormKey, out masterRecord))
+            if (linkCache.TryResolve<IMajorRecordGetter>(masterFormKey, out masterRecord))
             {
                 return true;
             }
@@ -131,8 +129,8 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         if (current.FormKey == master.FormKey) return true;
 
         // If different, try to resolve both and compare the actual records
-        if (!current.TryResolve(LinkCache, out var currentRecord)) return false;
-        if (!master.TryResolve(LinkCache, out var masterRecord)) return false;
+        if (!current.TryResolve(linkCache, out var currentRecord)) return false;
+        if (!master.TryResolve(linkCache, out var masterRecord)) return false;
 
         return currentRecord.FormKey == masterRecord.FormKey;
     }
