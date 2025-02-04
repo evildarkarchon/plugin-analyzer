@@ -5,6 +5,7 @@ using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Plugins.Order;
+using Mutagen.Bethesda.Plugins.Aspects;
 using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Oblivion;
@@ -235,8 +236,20 @@ public class Program
             return;
         }
 
-        var modKey = ModKey.FromFileName(pluginFile.Name);
+        // Skip main master plugins for each game
+        if (gameRelease == GameRelease.Fallout4 || gameRelease == GameRelease.Fallout4VR &&
+            pluginFile.Name.Equals("Fallout4.esm", StringComparison.OrdinalIgnoreCase) ||
+            gameRelease is GameRelease.SkyrimLE or GameRelease.SkyrimSE or GameRelease.SkyrimVR
+                or GameRelease.SkyrimSEGog
+            && pluginFile.Name.Equals("Skyrim.esm", StringComparison.OrdinalIgnoreCase) ||
+            gameRelease == GameRelease.Oblivion &&
+            pluginFile.Name.Equals("Oblivion.esm", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"Skipping main master plugin: {pluginFile.Name}");
+            return;
+        }
 
+        var modKey = ModKey.FromFileName(pluginFile.Name);
         try
         {
             var dataFolderPath = new DirectoryPath(pluginFile.Directory?.FullName ??
@@ -250,64 +263,60 @@ public class Program
                 case GameRelease.SkyrimSE:
                 case GameRelease.SkyrimVR:
                 case GameRelease.SkyrimSEGog:
-                {
-                    var loadOrder = LoadOrder.Import<ISkyrimModGetter>(
+                    var loadOrderSkyrim = LoadOrder.Import<ISkyrimModGetter>(
                         dataFolderPath,
                         [new ModListing(modKey, enabled: true, existsOnDisk: true)],
                         gameRelease);
 
-                    var mods = loadOrder.ListedOrder
+                    var modsSkyrim = loadOrderSkyrim.ListedOrder
                         .Select(x => x.Mod)
                         .Where(x => x != null)
                         .ToList();
 
-                    var plugin = mods.FirstOrDefault(x => x?.ModKey == modKey) ??
-                                 throw new InvalidOperationException($"Could not find plugin {modKey} in load order");
+                    var pluginSkyrim = modsSkyrim.FirstOrDefault(x => x?.ModKey == modKey) ??
+                                       throw new InvalidOperationException(
+                                           $"Could not find plugin {modKey} in load order");
 
-                    var cache = loadOrder.ToImmutableLinkCache<ISkyrimMod, ISkyrimModGetter>();
-                    results = await new SkyrimPluginAnalyzer(plugin, cache).Analyze();
-                }
+                    var cacheSkyrim = loadOrderSkyrim.ToImmutableLinkCache<ISkyrimMod, ISkyrimModGetter>();
+                    results = await new SkyrimPluginAnalyzer(pluginSkyrim, cacheSkyrim).Analyze();
                     break;
 
-                case GameRelease.Fallout4:
-                case GameRelease.Fallout4VR:
-                {
-                    var loadOrder = LoadOrder.Import<IFallout4ModGetter>(
+                case GameRelease.Fallout4 or GameRelease.Fallout4VR:
+                    var loadOrderFallout = LoadOrder.Import<IFallout4ModGetter>(
                         dataFolderPath,
                         [new ModListing(modKey, enabled: true, existsOnDisk: true)],
                         gameRelease);
 
-                    var mods = loadOrder.ListedOrder
+                    var modsFallout = loadOrderFallout.ListedOrder
                         .Select(x => x.Mod)
                         .Where(x => x != null)
                         .ToList();
 
-                    var plugin = mods.FirstOrDefault(x => x?.ModKey == modKey) ??
-                                 throw new InvalidOperationException($"Could not find plugin {modKey} in load order");
+                    var pluginFallout = modsFallout.FirstOrDefault(x => x?.ModKey == modKey) ??
+                                        throw new InvalidOperationException(
+                                            $"Could not find plugin {modKey} in load order");
 
-                    var cache = loadOrder.ToImmutableLinkCache<IFallout4Mod, IFallout4ModGetter>();
-                    results = await new Fallout4PluginAnalyzer(plugin, cache).Analyze();
-                }
+                    var cacheFallout = loadOrderFallout.ToImmutableLinkCache<IFallout4Mod, IFallout4ModGetter>();
+                    results = await new Fallout4PluginAnalyzer(pluginFallout, cacheFallout).Analyze();
                     break;
 
                 case GameRelease.Oblivion:
-                {
-                    var loadOrder = LoadOrder.Import<IOblivionModGetter>(
+                    var loadOrderOblivion = LoadOrder.Import<IOblivionModGetter>(
                         dataFolderPath,
                         [new ModListing(modKey, enabled: true, existsOnDisk: true)],
                         gameRelease);
 
-                    var mods = loadOrder.ListedOrder
+                    var modsOblivion = loadOrderOblivion.ListedOrder
                         .Select(x => x.Mod)
                         .Where(x => x != null)
                         .ToList();
 
-                    var plugin = mods.FirstOrDefault(x => x?.ModKey == modKey) ??
-                                 throw new InvalidOperationException($"Could not find plugin {modKey} in load order");
+                    var pluginOblivion = modsOblivion.FirstOrDefault(x => x?.ModKey == modKey) ??
+                                         throw new InvalidOperationException(
+                                             $"Could not find plugin {modKey} in load order");
 
-                    var cache = loadOrder.ToImmutableLinkCache<IOblivionMod, IOblivionModGetter>();
-                    results = await new OblivionPluginAnalyzer(plugin, cache).Analyze();
-                }
+                    var cacheOblivion = loadOrderOblivion.ToImmutableLinkCache<IOblivionMod, IOblivionModGetter>();
+                    results = await new OblivionPluginAnalyzer(pluginOblivion, cacheOblivion).Analyze();
                     break;
 
                 case GameRelease.EnderalLE:
@@ -349,51 +358,13 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
 {
     protected abstract bool IsNavmesh(IMajorRecordGetter record);
     protected abstract bool IsPlaced(IMajorRecordGetter record);
+    protected abstract bool CompareSpecialRecords(IMajorRecordGetter current, IMajorRecordGetter master);
+    protected abstract bool ShouldIgnoreForItmComparison(IMajorRecordGetter record);
+    protected abstract bool CompareGameSpecificRecord(IMajorRecordGetter current, IMajorRecordGetter master);
 
-    private bool ShouldIgnoreForItmComparison(IMajorRecordGetter record)
-    {
-        switch (record)
-        {
-            // Skyrim specific record types to ignore
-            case Mutagen.Bethesda.Skyrim.IQuestGetter:
-            case Mutagen.Bethesda.Skyrim.ICellGetter: // CELL
-            case Mutagen.Bethesda.Skyrim.INavigationMeshGetter: // NAVM
-            case Mutagen.Bethesda.Skyrim.IPlacedGetter: // REFR
-            case Mutagen.Bethesda.Skyrim.IWorldspaceGetter: // WRLD
-            case Mutagen.Bethesda.Skyrim.ILandscapeGetter: // LAND
-            case Mutagen.Bethesda.Skyrim.ILandscapeTextureGetter: // LTEX
-            case Mutagen.Bethesda.Skyrim.ILightGetter: // LIGH
-            case Mutagen.Bethesda.Skyrim.IIdleAnimationGetter: // IDLE
-            case Mutagen.Bethesda.Skyrim.IPackageGetter: // PACK
-            case Mutagen.Bethesda.Skyrim.IDialogGetter: // DIAL
-            // Fallout 4 specific exclusions
-            case Mutagen.Bethesda.Fallout4.INavigationMeshGetter: // NAVM for Fallout 4
-            case Mutagen.Bethesda.Fallout4.IPlacedGetter: // REFR for Fallout 4
-            case Mutagen.Bethesda.Fallout4.IWorldspaceGetter: // WRLD for Fallout 4
-            case Mutagen.Bethesda.Fallout4.ILandscapeGetter: // LAND for Fallout 4
-            case Mutagen.Bethesda.Fallout4.ILandscapeTextureGetter: // LTEX for Fallout 4
-            case Mutagen.Bethesda.Fallout4.ILightGetter: // LIGH for Fallout 4
-            case Mutagen.Bethesda.Fallout4.IIdleAnimationGetter: // IDLE for Fallout 4
-            case Mutagen.Bethesda.Fallout4.IPackageGetter: // PACK for Fallout 4
-            case Mutagen.Bethesda.Fallout4.IQuestGetter: // QUST for Fallout 4
-            case Mutagen.Bethesda.Fallout4.ICellGetter: // CELL for Fallout
-            case Mutagen.Bethesda.Fallout4.IDialogTopicGetter: // DIAL for Fallout
-            // Oblivion specific exclusions (if any)
-            case Mutagen.Bethesda.Oblivion.IQuestGetter: // QUST for Oblivion
-            case Mutagen.Bethesda.Oblivion.ILandscapeGetter: // LAND for Oblivion
-            case Mutagen.Bethesda.Oblivion.ICellGetter: // CELL for Oblivion
-            case Mutagen.Bethesda.Oblivion.IPlacedGetter: // REFR for Oblivion
-            case Mutagen.Bethesda.Oblivion.IWorldspaceGetter: // WRLD for Oblivion
-            case Mutagen.Bethesda.Oblivion.ILightGetter: // LIGH for Oblivion
-            case Mutagen.Bethesda.Oblivion.IIdleAnimationGetter: // IDLE for Oblivion
-                return true;
-            default:
-                // Default case: Do not ignore
-                return false;
-        }
-    }
+    protected readonly ILinkCache<TMod, TModGetter> LinkCache = linkCache;
 
-    private bool CompareGenericRecord(IMajorRecordGetter current, IMajorRecordGetter master)
+    protected bool CompareGenericRecord(IMajorRecordGetter current, IMajorRecordGetter master)
     {
         if (current.GetType() != master.GetType())
             return false;
@@ -422,359 +393,17 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
         if (current.GetType() != master.GetType()) return false;
 
         // Basic equivalency checks
+        if (current.GetType() != master.GetType()) return false;
         if (current.EditorID != master.EditorID) return false;
         if (current.IsDeleted != master.IsDeleted) return false;
         if (current.IsCompressed != master.IsCompressed) return false;
 
-        // Compare specific record types
-        return current switch
-        {
-            // Skyrim specific comparisons
-            Mutagen.Bethesda.Skyrim.ILeveledItemGetter levItemSkyrim =>
-                CompareSkyrimLeveledItem(levItemSkyrim, master as Mutagen.Bethesda.Skyrim.ILeveledItemGetter),
-
-            Mutagen.Bethesda.Skyrim.ILeveledNpcGetter levNpcSkyrim =>
-                CompareSkyrimLeveledNpc(levNpcSkyrim, master as Mutagen.Bethesda.Skyrim.ILeveledNpcGetter),
-
-            Mutagen.Bethesda.Skyrim.ILeveledSpellGetter levSpellSkyrim =>
-                CompareSkyrimLeveledSpell(levSpellSkyrim, master as Mutagen.Bethesda.Skyrim.ILeveledSpellGetter),
-
-            Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter constrObjSkyrim =>
-                CompareSkyrimConstructibleObject(constrObjSkyrim,
-                    master as Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter),
-
-            // Fallout 4 specific comparisons
-            Mutagen.Bethesda.Fallout4.ILeveledItemGetter levItemFallout =>
-                CompareFallout4LeveledItem(levItemFallout, master as Mutagen.Bethesda.Fallout4.ILeveledItemGetter),
-
-            Mutagen.Bethesda.Fallout4.ILeveledNpcGetter levNpcFallout =>
-                CompareFallout4LeveledNpc(levNpcFallout, master as Mutagen.Bethesda.Fallout4.ILeveledNpcGetter),
-
-            Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter constrObjFallout =>
-                CompareFallout4ConstructibleObject(constrObjFallout,
-                    master as Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter),
-
-            // Oblivion specific comparisons
-            Mutagen.Bethesda.Oblivion.ILeveledItemGetter levItemOblivion =>
-                CompareOblivionLeveledItem(levItemOblivion, master as Mutagen.Bethesda.Oblivion.ILeveledItemGetter),
-
-            Mutagen.Bethesda.Oblivion.ILeveledSpellGetter levSpellOblivion =>
-                CompareOblivionLeveledSpell(levSpellOblivion, master as Mutagen.Bethesda.Oblivion.ILeveledSpellGetter),
-
-            // Cells and other special records that need binary comparison
-            _ => !ShouldIgnoreForItmComparison(current) && CompareGenericRecord(current, master)
-        };
-    }
-
-    private bool CompareSkyrimLeveledItem(Mutagen.Bethesda.Skyrim.ILeveledItemGetter current,
-        Mutagen.Bethesda.Skyrim.ILeveledItemGetter? master)
-    {
-        if (master == null) return false;
-
-        if (current.Flags != master.Flags) return false;
-        if (current.ChanceNone != master.ChanceNone) return false;
-
-        var currentEntries = current.Entries?.ToList() ?? [];
-        var masterEntries = master.Entries?.ToList() ?? [];
-
-        if (currentEntries.Count != masterEntries.Count) return false;
-
-        var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
-        var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
-
-        var entryCount = sortedCurrent.Count;
-        for (var i = 0; i < entryCount; i++)
-        {
-            var currentEntry = sortedCurrent[i];
-            var masterEntry = sortedMaster[i];
-
-            if (currentEntry.Data?.Level != masterEntry.Data?.Level) return false;
-            if (currentEntry.Data?.Count != masterEntry.Data?.Count) return false;
-
-            var currentFormKey = currentEntry.Data?.Reference.FormKey;
-            var masterFormKey = masterEntry.Data?.Reference.FormKey;
-            if (currentFormKey != masterFormKey) return false;
-        }
-
-        return true;
-    }
-
-    private bool CompareSkyrimLeveledNpc(Mutagen.Bethesda.Skyrim.ILeveledNpcGetter current,
-        Mutagen.Bethesda.Skyrim.ILeveledNpcGetter? master)
-    {
-        if (master == null) return false;
-
-        if (current.Flags != master.Flags) return false;
-        if (current.ChanceNone != master.ChanceNone) return false;
-
-        var currentEntries = current.Entries?.ToList() ?? [];
-        var masterEntries = master.Entries?.ToList() ?? [];
-
-        if (currentEntries.Count != masterEntries.Count) return false;
-
-        var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
-        var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
-
-        var entryCount = sortedCurrent.Count;
-        for (var i = 0; i < entryCount; i++)
-        {
-            var currentEntry = sortedCurrent[i];
-            var masterEntry = sortedMaster[i];
-
-            if (currentEntry.Data?.Level != masterEntry.Data?.Level) return false;
-            if (currentEntry.Data?.Count != masterEntry.Data?.Count) return false;
-
-            var currentFormKey = currentEntry.Data?.Reference.FormKey;
-            var masterFormKey = masterEntry.Data?.Reference.FormKey;
-            if (currentFormKey != masterFormKey) return false;
-        }
-
-        return true;
-    }
-
-    private bool CompareSkyrimLeveledSpell(Mutagen.Bethesda.Skyrim.ILeveledSpellGetter current,
-        Mutagen.Bethesda.Skyrim.ILeveledSpellGetter? master)
-    {
-        if (master == null) return false;
-
-        if (current.Flags != master.Flags) return false;
-        if (current.ChanceNone != master.ChanceNone) return false;
-
-        var currentEntries = current.Entries?.ToList() ?? [];
-        var masterEntries = master.Entries?.ToList() ?? [];
-
-        if (currentEntries.Count != masterEntries.Count) return false;
-
-        var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
-        var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
-
-        var entryCount = sortedCurrent.Count;
-        for (var i = 0; i < entryCount; i++)
-        {
-            var currentEntry = sortedCurrent[i];
-            var masterEntry = sortedMaster[i];
-
-            if (currentEntry.Data?.Level != masterEntry.Data?.Level) return false;
-
-            var currentFormKey = currentEntry.Data?.Reference.FormKey;
-            var masterFormKey = masterEntry.Data?.Reference.FormKey;
-            if (currentFormKey != masterFormKey) return false;
-        }
-
-        return true;
-    }
-
-    private bool CompareSkyrimConstructibleObject(Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter current,
-        Mutagen.Bethesda.Skyrim.IConstructibleObjectGetter? master)
-    {
-        if (master == null) return false;
-
-        if (!FormKeyComparer.Equal(current.WorkbenchKeyword.FormKey, master.WorkbenchKeyword.FormKey))
-            return false;
-
-        if (!FormKeyComparer.Equal(current.CreatedObject.FormKey, master.CreatedObject.FormKey))
-            return false;
-
-        var currentItems = current.Items?.ToList() ?? [];
-        var masterItems = master.Items?.ToList() ?? [];
-
-        if (currentItems.Count != masterItems.Count) return false;
-
-        var sortedCurrent = currentItems
-            .ToList();
-        var sortedMaster = masterItems
-            .ToList();
-
-        var currentCount = sortedCurrent.Count;
-        var masterCount = sortedMaster.Count;
-
-        if (currentCount != masterCount)
-            return false;
-
-        for (var i = 0; i < currentCount; i++)
-        {
-            // Compare both the FormID of the referenced item and the count in the entry
-            if (currentItems[i].Item.Item.FormKey != masterItems[i].Item.Item.FormKey)
-                return false;
-
-            // Compare the count/quantity in the container entry
-            if (currentItems[i].Item.Count != masterItems[i].Item.Count)
-                return false;
-        }
-
-        return true;
-    }
-
-    private bool CompareFallout4LeveledItem(Mutagen.Bethesda.Fallout4.ILeveledItemGetter current,
-        Mutagen.Bethesda.Fallout4.ILeveledItemGetter? master)
-    {
-        if (master == null) return false;
-
-        if (current.Flags != master.Flags) return false;
-        if (current.ChanceNone != master.ChanceNone) return false;
-
-        var currentEntries = current.Entries?.ToList() ?? [];
-        var masterEntries = master.Entries?.ToList() ?? [];
-
-        if (currentEntries.Count != masterEntries.Count) return false;
-
-        var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
-        var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
-
-        var entryCount = sortedCurrent.Count;
-        for (var i = 0; i < entryCount; i++)
-        {
-            var currentEntry = sortedCurrent[i];
-            var masterEntry = sortedMaster[i];
-
-            if (currentEntry.Data?.Level != masterEntry.Data?.Level) return false;
-            if (currentEntry.Data?.Count != masterEntry.Data?.Count) return false;
-
-            var currentFormKey = currentEntry.Data?.Reference.FormKey;
-            var masterFormKey = masterEntry.Data?.Reference.FormKey;
-            if (currentFormKey != masterFormKey) return false;
-        }
-
-        return true;
-    }
-
-    private bool CompareFallout4LeveledNpc(Mutagen.Bethesda.Fallout4.ILeveledNpcGetter current,
-        Mutagen.Bethesda.Fallout4.ILeveledNpcGetter? master)
-    {
-        if (master == null) return false;
-
-        if (current.Flags != master.Flags) return false;
-        if (current.ChanceNone != master.ChanceNone) return false;
-
-        var currentEntries = current.Entries?.ToList() ?? [];
-        var masterEntries = master.Entries?.ToList() ?? [];
-
-        if (currentEntries.Count != masterEntries.Count) return false;
-
-        var sortedCurrent = currentEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
-        var sortedMaster = masterEntries.OrderBy(e => e.Data?.Reference.FormKey.ID).ToList();
-
-        var entryCount = sortedCurrent.Count;
-        for (var i = 0; i < entryCount; i++)
-        {
-            var currentEntry = sortedCurrent[i];
-            var masterEntry = sortedMaster[i];
-
-            if (currentEntry.Data?.Level != masterEntry.Data?.Level) return false;
-            if (currentEntry.Data?.Count != masterEntry.Data?.Count) return false;
-
-            var currentFormKey = currentEntry.Data?.Reference.FormKey;
-            var masterFormKey = masterEntry.Data?.Reference.FormKey;
-            if (currentFormKey != masterFormKey) return false;
-        }
-
-        return true;
-    }
-
-    private bool CompareFallout4ConstructibleObject(Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter current,
-        Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter? master)
-    {
-        if (master == null) return false;
-
-        if (!FormKeyComparer.Equal(current.WorkbenchKeyword.FormKey, master.WorkbenchKeyword.FormKey))
-            return false;
-
-        if (!FormKeyComparer.Equal(current.CreatedObject.FormKey, master.CreatedObject.FormKey))
-            return false;
-
-        var currentComponents = current.Components?.ToList() ??
-                                [];
-        var masterComponents = master.Components?.ToList() ??
-                               [];
-
-        if (currentComponents.Count != masterComponents.Count) return false;
-
-        var sortedCurrent = currentComponents.OrderBy(i => i.Component.FormKey.ID).ToList();
-        var sortedMaster = masterComponents.OrderBy(i => i.Component.FormKey.ID).ToList();
-
-        var componentCount = sortedCurrent.Count;
-        for (var i = 0; i < componentCount; i++)
-        {
-            if (!FormKeyComparer.Equal(sortedCurrent[i].Component.FormKey, sortedMaster[i].Component.FormKey))
-                return false;
-            if (sortedCurrent[i].Count != sortedMaster[i].Count)
-                return false;
-        }
-
-        return true;
-    }
-
-    private bool CompareOblivionLeveledItem(Mutagen.Bethesda.Oblivion.ILeveledItemGetter current,
-        Mutagen.Bethesda.Oblivion.ILeveledItemGetter? master)
-    {
-        if (master == null) return false;
-
-        if (current.Flags != master.Flags) return false;
-        if (current.ChanceNone != master.ChanceNone) return false;
-
-        var currentEntries = current.Entries.ToList();
-        var masterEntries = master.Entries.ToList();
-
-        if (currentEntries.Count != masterEntries.Count) return false;
-
-        var sortedCurrent = currentEntries.OrderBy(e => e.Reference.FormKey.ID).ToList();
-        var sortedMaster = masterEntries.OrderBy(e => e.Reference.FormKey.ID).ToList();
-
-        var entryCount = sortedCurrent.Count;
-        for (var i = 0; i < entryCount; i++)
-        {
-            var currentEntry = sortedCurrent[i];
-            var masterEntry = sortedMaster[i];
-
-            if (currentEntry.Level != masterEntry.Level) return false;
-            if (currentEntry.Count != masterEntry.Count) return false;
-
-            var currentFormKey = currentEntry.Reference.FormKey;
-            var masterFormKey = masterEntry.Reference.FormKey;
-            if (currentFormKey != masterFormKey) return false;
-        }
-
-        return true;
-    }
-
-    private bool CompareOblivionLeveledSpell(Mutagen.Bethesda.Oblivion.ILeveledSpellGetter current,
-        Mutagen.Bethesda.Oblivion.ILeveledSpellGetter? master)
-    {
-        if (master == null) return false;
-
-        if (current.Flags != master.Flags) return false;
-        if (current.ChanceNone != master.ChanceNone) return false;
-
-        var currentEntries = current.Entries.ToList();
-        var masterEntries = master.Entries.ToList();
-
-        if (currentEntries.Count != masterEntries.Count) return false;
-
-        var sortedCurrent = currentEntries
-            .OrderBy(e => e.Reference.FormKey)
-            .ToList();
-        var sortedMaster = masterEntries
-            .OrderBy(e => e.Reference.FormKey)
-            .ToList();
-
-        var entryCount = sortedCurrent.Count;
-        for (var i = 0; i < entryCount; i++)
-        {
-            if (sortedCurrent[i].Level != sortedMaster[i].Level) return false;
-            if (!Equals(sortedCurrent[i].Reference, sortedMaster[i].Reference)) return false;
-        }
-
-        return true;
-    }
-
-    private static class FormKeyComparer
-    {
-        public static bool Equal(FormKey? a, FormKey? b)
-        {
-            if (!a.HasValue && !b.HasValue) return true;
-            if (!a.HasValue || !b.HasValue) return false;
-            return a.Value.ID == b.Value.ID;
-        }
+        if (CompareSpecialRecords(current, master)) return true;
+        
+        if (CompareGameSpecificRecord(current, master)) return true;
+
+        // Cells and other special records that need binary comparison
+        return !ShouldIgnoreForItmComparison(current) && CompareGenericRecord(current, master);
     }
 
     public async Task<AnalysisResults> Analyze()
@@ -792,7 +421,7 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
                 }
 
                 var formKey = record.FormKey;
-                if (!linkCache.TryResolve<IMajorRecordGetter>(formKey, out var winning)) continue;
+                if (!LinkCache.TryResolve<IMajorRecordGetter>(formKey, out var winning)) continue;
 
                 var winningModKey = winning.FormKey.ModKey;
                 if (winningModKey != plugin.ModKey && !ShouldIgnoreForItmComparison(record))
@@ -813,7 +442,6 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
                 }
             }
         });
-
         return results;
     }
 
@@ -830,7 +458,7 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
             var master = masters[i];
             var masterFormKey = new FormKey(master, record.FormKey.ID);
 
-            if (linkCache.TryResolve<IMajorRecordGetter>(masterFormKey, out masterRecord))
+            if (LinkCache.TryResolve<IMajorRecordGetter>(masterFormKey, out masterRecord))
             {
                 return true;
             }
@@ -838,59 +466,21 @@ public abstract class BasePluginAnalyzer<TMod, TModGetter>(TModGetter plugin, IL
 
         return false;
     }
-}
 
-/// <summary>
-/// A specialized plugin analyzer for Skyrim. This class analyzes a Skyrim plugin's records, performing tasks
-/// such as identifying navigation meshes and placed objects.
-/// </summary>
-public class SkyrimPluginAnalyzer(ISkyrimModGetter plugin, ILinkCache<ISkyrimMod, ISkyrimModGetter> linkCache)
-    : BasePluginAnalyzer<ISkyrimMod, ISkyrimModGetter>(plugin, linkCache)
-{
-    protected override bool IsNavmesh(IMajorRecordGetter record)
+    protected bool CompareFormLinks<T>(IFormLinkGetter<T>? current, IFormLinkGetter<T>? master)
+        where T : class, IMajorRecordGetter
     {
-        return record is Mutagen.Bethesda.Skyrim.INavigationMeshGetter;
-    }
+        if (current == null && master == null) return true;
+        if (current == null || master == null) return false;
 
-    protected override bool IsPlaced(IMajorRecordGetter record)
-    {
-        return record is Mutagen.Bethesda.Skyrim.IPlacedGetter;
-    }
-}
+        // If form IDs are identical, no need to resolve
+        if (current.FormKey == master.FormKey) return true;
 
-/// <summary>
-/// Provides analysis capabilities specific to Fallout 4 plugin files, determining properties
-/// such as navigation mesh records and placed object records.
-/// </summary>
-public class Fallout4PluginAnalyzer(IFallout4ModGetter plugin, ILinkCache<IFallout4Mod, IFallout4ModGetter> linkCache)
-    : BasePluginAnalyzer<IFallout4Mod, IFallout4ModGetter>(plugin, linkCache)
-{
-    protected override bool IsNavmesh(IMajorRecordGetter record)
-    {
-        return record is Mutagen.Bethesda.Fallout4.INavigationMeshGetter;
-    }
+        // If different, try to resolve both and compare the actual records
+        if (!current.TryResolve(LinkCache, out var currentRecord)) return false;
+        if (!master.TryResolve(LinkCache, out var masterRecord)) return false;
 
-    protected override bool IsPlaced(IMajorRecordGetter record)
-    {
-        return record is Mutagen.Bethesda.Fallout4.IPlacedGetter;
-    }
-}
-
-/// <summary>
-/// Provides analysis functionality for Oblivion plugins by inheriting from the base plugin analyzer.
-/// This includes specialized processing of Oblivion-specific plugin records, such as identifying placed objects.
-/// </summary>
-public class OblivionPluginAnalyzer(IOblivionModGetter plugin, ILinkCache<IOblivionMod, IOblivionModGetter> linkCache)
-    : BasePluginAnalyzer<IOblivionMod, IOblivionModGetter>(plugin, linkCache)
-{
-    protected override bool IsNavmesh(IMajorRecordGetter record)
-    {
-        return false; // Oblivion doesn't use navmeshes
-    }
-
-    protected override bool IsPlaced(IMajorRecordGetter record)
-    {
-        return record is Mutagen.Bethesda.Oblivion.IPlacedGetter;
+        return currentRecord.FormKey == masterRecord.FormKey;
     }
 }
 
